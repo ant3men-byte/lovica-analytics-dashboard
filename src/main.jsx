@@ -6,7 +6,13 @@ import './styles.css'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-const supabase = createClient(supabaseUrl, supabaseKey)
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+})
 
 const money = (value) =>
   new Intl.NumberFormat('ar-SA', {
@@ -28,19 +34,53 @@ function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
   const [loading, setLoading] = useState(false)
 
   const login = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setInfo('')
 
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     })
 
-    if (error) setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.')
+    if (error) {
+      setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.')
+    }
+
+    setLoading(false)
+  }
+
+  const sendRecovery = async () => {
+    const cleanEmail = email.trim()
+
+    if (!cleanEmail) {
+      setError('اكتب البريد الإلكتروني أولًا.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    setInfo('')
+
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: window.location.origin,
+    })
+
+    if (error) {
+      if (error.message?.toLowerCase().includes('rate limit')) {
+        setError('تم تجاوز حد إرسال رسائل الاستعادة مؤقتًا. انتظر قليلًا ثم حاول مرة واحدة.')
+      } else {
+        setError('تعذر إرسال رابط استعادة كلمة المرور.')
+      }
+    } else {
+      setInfo('تم إرسال رابط الاستعادة إلى بريدك. افتح أحدث رسالة فقط.')
+    }
+
     setLoading(false)
   }
 
@@ -64,6 +104,7 @@ function Login() {
           <label>البريد الإلكتروني</label>
           <input
             type="email"
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="name@example.com"
@@ -73,6 +114,7 @@ function Login() {
           <label>كلمة المرور</label>
           <input
             type="password"
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
@@ -80,14 +122,131 @@ function Login() {
           />
 
           {error && <div className="error">{error}</div>}
+          {info && <div className="info">{info}</div>}
 
           <button disabled={loading}>
-            {loading ? 'جاري الدخول...' : 'دخول'}
+            {loading ? 'جاري التنفيذ...' : 'دخول'}
+          </button>
+
+          <button
+            type="button"
+            onClick={sendRecovery}
+            disabled={loading}
+            style={{
+              marginTop: 0,
+              background: '#f3f1ed',
+              color: '#222',
+              border: '1px solid #e1ddd7',
+            }}
+          >
+            نسيت كلمة المرور؟
+          </button>
+        </form>
+
+        <div className="security">اتصال آمن عبر Supabase Auth</div>
+      </section>
+    </main>
+  )
+}
+
+function ResetPassword({ onDone }) {
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const updatePassword = async (e) => {
+    e.preventDefault()
+    setError('')
+    setInfo('')
+
+    if (password.length < 8) {
+      setError('كلمة المرور يجب أن تكون 8 أحرف على الأقل.')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('كلمتا المرور غير متطابقتين.')
+      return
+    }
+
+    setLoading(true)
+
+    const { error } = await supabase.auth.updateUser({
+      password,
+    })
+
+    if (error) {
+      setError('تعذر تحديث كلمة المرور. اطلب رابط استعادة جديد وحاول مرة أخرى.')
+      setLoading(false)
+      return
+    }
+
+    setInfo('تم تغيير كلمة المرور بنجاح. جاري إعادتك لتسجيل الدخول...')
+
+    await supabase.auth.signOut()
+
+    if (window.location.hash) {
+      window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname + window.location.search
+      )
+    }
+
+    setTimeout(() => {
+      onDone()
+    }, 900)
+  }
+
+  return (
+    <main className="login-page">
+      <section className="brand-area">
+        <div className="logo">L</div>
+        <div>
+          <div className="eyebrow">LOVICA BEAUTY</div>
+          <h1>تعيين كلمة مرور جديدة</h1>
+          <p>اختر كلمة مرور جديدة لحسابك المعتمد في لوحة لوفيكا.</p>
+        </div>
+      </section>
+
+      <section className="login-card">
+        <div className="eyebrow">استعادة الحساب</div>
+        <h2>كلمة المرور الجديدة</h2>
+        <p className="muted">اكتب كلمة مرور جديدة ثم أكدها.</p>
+
+        <form onSubmit={updatePassword}>
+          <label>كلمة المرور الجديدة</label>
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="8 أحرف على الأقل"
+            required
+          />
+
+          <label>تأكيد كلمة المرور</label>
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="أعد كتابة كلمة المرور"
+            required
+          />
+
+          {error && <div className="error">{error}</div>}
+          {info && <div className="info">{info}</div>}
+
+          <button disabled={loading}>
+            {loading ? 'جاري الحفظ...' : 'حفظ كلمة المرور الجديدة'}
           </button>
         </form>
 
         <div className="security">
-          اتصال آمن عبر Supabase Auth
+          لن يتم حفظ كلمة المرور داخل GitHub أو Vercel.
         </div>
       </section>
     </main>
@@ -131,9 +290,7 @@ function CustomerSearch() {
     <>
       <section className="panel">
         <h2>بحث العملاء</h2>
-        <p className="muted">
-          ابحث باستخدام رقم جوال العميل.
-        </p>
+        <p className="muted">ابحث باستخدام رقم جوال العميل.</p>
 
         <form className="search" onSubmit={search}>
           <input
@@ -270,9 +427,19 @@ function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [recoveryMode, setRecoveryMode] = useState(false)
 
   useEffect(() => {
     let active = true
+
+    const hash = window.location.hash || ''
+    const looksLikeRecovery =
+      hash.includes('type=recovery') ||
+      new URLSearchParams(window.location.search).get('type') === 'recovery'
+
+    if (looksLikeRecovery) {
+      setRecoveryMode(true)
+    }
 
     async function load(user) {
       if (!user) {
@@ -299,15 +466,34 @@ function App() {
       if (!active) return
 
       setSession(data.session)
+
+      if (looksLikeRecovery && data.session) {
+        setRecoveryMode(true)
+        setLoading(false)
+        return
+      }
+
       load(data.session?.user)
     })
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, next) => {
+    } = supabase.auth.onAuthStateChange((event, next) => {
       if (!active) return
 
       setSession(next)
+
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecoveryMode(true)
+        setLoading(false)
+        return
+      }
+
+      if (recoveryMode) {
+        setLoading(false)
+        return
+      }
+
       setLoading(true)
       load(next?.user)
     })
@@ -316,10 +502,14 @@ function App() {
       active = false
       subscription.unsubscribe()
     }
-  }, [])
+  }, [recoveryMode])
 
   if (loading) {
     return <div className="loading">جاري تحميل لوحة لوفيكا...</div>
+  }
+
+  if (recoveryMode && session) {
+    return <ResetPassword onDone={() => setRecoveryMode(false)} />
   }
 
   if (!session) return <Login />
