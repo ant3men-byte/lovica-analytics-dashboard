@@ -659,15 +659,28 @@ function Reports() {
     setMessage('')
 
     try {
-      const { data, error } = await supabase.rpc('report_all_customers_v1')
+      const rows = []
+      const pageSize = 1000
+      let offset = 0
 
-      if (error) {
-        setMessage(`تعذر تجهيز التقرير: ${error.message}`)
-        setExporting(false)
-        return
+      while (true) {
+        const { data, error } = await supabase.rpc('report_all_customers_page_v1', {
+          p_limit: pageSize,
+          p_offset: offset,
+        })
+
+        if (error) {
+          setMessage(`تعذر تجهيز التقرير: ${error.message}`)
+          setExporting(false)
+          return
+        }
+
+        const batch = data || []
+        rows.push(...batch)
+
+        if (batch.length < pageSize) break
+        offset += pageSize
       }
-
-      const rows = data || []
       const workbook = new ExcelJS.Workbook()
       workbook.creator = 'Lovica Analytics'
       workbook.created = new Date()
