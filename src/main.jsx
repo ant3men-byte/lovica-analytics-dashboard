@@ -407,8 +407,9 @@ function Overview() {
             <div className="panel-title-row"><div><h2>الشحن</h2><p className="muted">توزيع جميع الطلبات حسب شركة / نوع الشحن.</p></div></div>
             <SimpleTable rows={snapshot.shipping || []} columns={[
               { key: 'shipping_method', label: 'شركة / نوع الشحن' },
-              { key: 'orders_count', label: 'الطلبات', render: (r) => number(r.orders_count) },
-              { key: 'revenue', label: 'الإيرادات', render: (r) => money(r.revenue) },
+              { key: 'orders_count', label: 'عدد الطلبات', render: (r) => number(r.orders_count) },
+              { key: 'cod_fees', label: 'رسوم الدفع عند الاستلام', render: (r) => money(r.cod_fees) },
+              { key: 'total_fees', label: 'الإجمالي', render: (r) => money(r.total_fees) },
             ]} />
           </section>
           <section className="panel">
