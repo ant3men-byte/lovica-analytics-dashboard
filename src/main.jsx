@@ -14,6 +14,31 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   },
 })
 
+const dashboardV3Styles = `
+.card small{display:block;margin-top:9px;color:#777;font-size:12px}
+.card small.positive{color:#287a46;font-weight:800}
+.card small.negative{color:#b33a3a;font-weight:800}
+.chart-wrap{margin-top:24px}
+.bar-chart{height:260px;display:flex;align-items:flex-end;gap:3px;border-bottom:1px solid #e7e2dc;padding:0 2px;overflow:hidden}
+.bar-column{height:100%;flex:1;min-width:2px;display:flex;align-items:flex-end}
+.bar{width:100%;border-radius:4px 4px 0 0;min-height:3px;transition:.2s ease}
+.value-bar{background:#111}
+.orders-bar{background:#a88b68}
+.chart-caption{display:flex;justify-content:space-between;margin-top:10px;color:#777;font-size:12px}
+.period-buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.period-buttons button{border:1px solid #e1ddd7;padding:10px 16px}
+.period-buttons button.inactive{background:#f3f1ed;color:#222}
+.period-buttons button.active{background:#111;color:#fff}
+@media(max-width:550px){.bar-chart{height:190px;gap:2px}}
+`
+
+if (typeof document !== 'undefined' && !document.getElementById('lovica-v3-styles')) {
+  const style = document.createElement('style')
+  style.id = 'lovica-v3-styles'
+  style.textContent = dashboardV3Styles
+  document.head.appendChild(style)
+}
+
 const money = (value) =>
   new Intl.NumberFormat('ar-SA', {
     style: 'currency',
@@ -109,7 +134,6 @@ function Login() {
 
         <form onSubmit={login}>
           <label>البريد الإلكتروني</label>
-
           <input
             type="email"
             autoComplete="email"
@@ -120,7 +144,6 @@ function Login() {
           />
 
           <label>كلمة المرور</label>
-
           <input
             type="password"
             autoComplete="current-password"
@@ -228,7 +251,6 @@ function ResetPassword({ onDone }) {
 
         <form onSubmit={updatePassword}>
           <label>كلمة المرور الجديدة</label>
-
           <input
             type="password"
             autoComplete="new-password"
@@ -239,7 +261,6 @@ function ResetPassword({ onDone }) {
           />
 
           <label>تأكيد كلمة المرور</label>
-
           <input
             type="password"
             autoComplete="new-password"
@@ -266,130 +287,232 @@ function ResetPassword({ onDone }) {
 }
 
 function Overview() {
-  const [data, setData] = useState(null)
+  const [days, setDays] = useState(30)
+  const [trend, setTrend] = useState([])
+  const [compare, setCompare] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
     let active = true
 
-    async function loadOverview() {
+    async function loadAnalytics() {
       setLoading(true)
       setError('')
 
-      const { data, error } = await supabase.rpc('dashboard_overview_v1')
+      const [trendResult, compareResult] = await Promise.all([
+        supabase.rpc('dashboard_daily_trend_v1', { p_days: days }),
+        supabase.rpc('dashboard_period_compare_v1', { p_days: days }),
+      ])
 
       if (!active) return
 
-      if (error) {
-        setError(`تعذر تحميل المؤشرات: ${error.message}`)
+      if (trendResult.error || compareResult.error) {
+        const message =
+          trendResult.error?.message ||
+          compareResult.error?.message ||
+          'Unknown error'
+        setError(`تعذر تحميل التحليلات: ${message}`)
         setLoading(false)
         return
       }
 
-      setData(data?.[0] || null)
+      setTrend(trendResult.data || [])
+      setCompare(compareResult.data?.[0] || null)
       setLoading(false)
     }
 
-    loadOverview()
+    loadAnalytics()
 
     return () => {
       active = false
     }
-  }, [])
+  }, [days])
 
-  if (loading) {
-    return (
-      <section className="panel">
-        جاري تحميل مؤشرات الداشبورد...
-      </section>
-    )
+  const pct = (value) => {
+    if (value === null || value === undefined) return '—'
+    const n = Number(value)
+    return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
   }
 
-  if (error) {
-    return <section className="panel error">{error}</section>
+  const changeClass = (value) => {
+    const n = Number(value)
+    if (!Number.isFinite(n) || n === 0) return ''
+    return n > 0 ? 'positive' : 'negative'
   }
 
-  if (!data) {
-    return (
-      <section className="panel">
-        لا توجد بيانات متاحة حاليًا.
-      </section>
-    )
-  }
+  const maxValue = Math.max(
+    1,
+    ...trend.map((row) => Number(row.order_value || 0))
+  )
+
+  const maxOrders = Math.max(
+    1,
+    ...trend.map((row) => Number(row.orders_count || 0))
+  )
 
   return (
     <>
       <section className="panel">
-        <div className="eyebrow">OVERVIEW</div>
-        <h2>ملخص المتجر</h2>
+        <div className="eyebrow">ANALYTICS V3</div>
+        <h2>أداء المتجر</h2>
         <p className="muted">
-          هذه الأرقام حاليًا مبنية على جميع الطلبات المستوردة. سنضيف لاحقًا
-          تعريفًا محاسبيًا أدق للمبيعات حسب حالات الطلب والمرتجعات.
+          اختر الفترة لعرضها ومقارنتها تلقائيًا بالفترة السابقة المساوية لها.
+          الفترة الناقصة ستتم إضافتها لاحقًا من ملف Excel.
         </p>
-      </section>
 
-      <section className="cards">
-        <div className="card">
-          <span>إجمالي الطلبات</span>
-          <strong>{number(data.total_orders)}</strong>
-        </div>
-
-        <div className="card">
-          <span>إجمالي العملاء</span>
-          <strong>{number(data.total_customers)}</strong>
-        </div>
-
-        <div className="card">
-          <span>إجمالي قيمة الطلبات</span>
-          <strong>{money(data.total_sales)}</strong>
-        </div>
-
-        <div className="card">
-          <span>متوسط قيمة الطلب</span>
-          <strong>{money(data.average_order_value)}</strong>
+        <div className="period-buttons">
+          {[7, 30, 90, 365].map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setDays(option)}
+              className={days === option ? 'active' : 'inactive'}
+            >
+              {option === 365 ? 'سنة' : `${option} يوم`}
+            </button>
+          ))}
         </div>
       </section>
 
-      <section className="cards">
-        <div className="card">
-          <span>إجمالي المسترجع</span>
-          <strong>{money(data.total_refunded)}</strong>
-        </div>
+      {loading && (
+        <section className="panel">
+          جاري تحميل تحليلات الفترة...
+        </section>
+      )}
 
-        <div className="card">
-          <span>طلبات بها استرجاع</span>
-          <strong>{number(data.refunded_orders)}</strong>
-        </div>
+      {error && <section className="panel error">{error}</section>}
 
-        <div className="card">
-          <span>أول طلب في البيانات</span>
-          <strong>{date(data.first_order_at)}</strong>
-        </div>
+      {!loading && !error && compare && (
+        <>
+          <section className="cards">
+            <div className="card">
+              <span>الطلبات</span>
+              <strong>{number(compare.current_orders)}</strong>
+              <small className={changeClass(compare.orders_change_pct)}>
+                {pct(compare.orders_change_pct)} عن الفترة السابقة
+              </small>
+            </div>
 
-        <div className="card">
-          <span>آخر طلب في البيانات</span>
-          <strong>{date(data.last_order_at)}</strong>
-        </div>
-      </section>
+            <div className="card">
+              <span>العملاء</span>
+              <strong>{number(compare.current_customers)}</strong>
+              <small className={changeClass(compare.customers_change_pct)}>
+                {pct(compare.customers_change_pct)} عن الفترة السابقة
+              </small>
+            </div>
 
-      <section className="panel">
-        <h2>حالة النسخة الحالية</h2>
-        <div className="details">
-          <div>
-            <span>المصدر</span>
-            <strong>Supabase</strong>
-          </div>
-          <div>
-            <span>التحديث الحي من سلة</span>
-            <strong>لم يُفعّل بعد</strong>
-          </div>
-          <div>
-            <span>احتساب الربح التاريخي</span>
-            <strong>بانتظار بيانات التكلفة</strong>
-          </div>
-        </div>
-      </section>
+            <div className="card">
+              <span>قيمة الطلبات</span>
+              <strong>{money(compare.current_value)}</strong>
+              <small className={changeClass(compare.value_change_pct)}>
+                {pct(compare.value_change_pct)} عن الفترة السابقة
+              </small>
+            </div>
+
+            <div className="card">
+              <span>بعد طرح المسترجع</span>
+              <strong>{money(compare.current_net)}</strong>
+              <small>
+                المسترجع {money(compare.current_refunded)}
+              </small>
+            </div>
+          </section>
+
+          <section className="panel">
+            <h2>قيمة الطلبات عبر الزمن</h2>
+            <p className="muted">
+              الأعمدة تمثل قيمة الطلبات لكل يوم ضمن الفترة المختارة.
+            </p>
+
+            <div className="chart-wrap">
+              <div className="bar-chart">
+                {trend.map((row) => (
+                  <div
+                    className="bar-column"
+                    key={`value-${row.day}`}
+                    title={`${date(row.day)} — ${money(row.order_value)}`}
+                  >
+                    <div
+                      className="bar value-bar"
+                      style={{
+                        height: `${Math.max(
+                          3,
+                          (Number(row.order_value || 0) / maxValue) * 100
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="chart-caption">
+                <span>{trend.length ? date(trend[0].day) : '—'}</span>
+                <span>
+                  {trend.length ? date(trend[trend.length - 1].day) : '—'}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <section className="panel">
+            <h2>عدد الطلبات عبر الزمن</h2>
+            <p className="muted">
+              الأعمدة تمثل عدد الطلبات اليومية.
+            </p>
+
+            <div className="chart-wrap">
+              <div className="bar-chart">
+                {trend.map((row) => (
+                  <div
+                    className="bar-column"
+                    key={`orders-${row.day}`}
+                    title={`${date(row.day)} — ${number(row.orders_count)} طلب`}
+                  >
+                    <div
+                      className="bar orders-bar"
+                      style={{
+                        height: `${Math.max(
+                          3,
+                          (Number(row.orders_count || 0) / maxOrders) * 100
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="chart-caption">
+                <span>{trend.length ? date(trend[0].day) : '—'}</span>
+                <span>
+                  {trend.length ? date(trend[trend.length - 1].day) : '—'}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <section className="panel">
+            <h2>مقارنة سريعة</h2>
+
+            <div className="details">
+              <div>
+                <span>الفترة الحالية</span>
+                <strong>{money(compare.current_value)}</strong>
+              </div>
+
+              <div>
+                <span>الفترة السابقة</span>
+                <strong>{money(compare.previous_value)}</strong>
+              </div>
+
+              <div>
+                <span>صافي بعد المسترجع الحالي</span>
+                <strong>{money(compare.current_net)}</strong>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
     </>
   )
 }
@@ -585,7 +708,6 @@ function Dashboard({ profile }) {
         </header>
 
         {page === 'overview' && <Overview />}
-
         {page === 'customers' && canSearchCustomers && <CustomerSearch />}
       </main>
     </div>
