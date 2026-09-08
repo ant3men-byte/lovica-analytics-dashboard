@@ -651,93 +651,86 @@ function CustomerSearch() {
 
 
 function Reports() {
-  const [exporting, setExporting] = useState(false)
+  const [exporting, setExporting] = useState('')
   const [message, setMessage] = useState('')
+  const [inactiveDays, setInactiveDays] = useState(90)
 
-  const exportCustomersReport = async () => {
-    setExporting(true)
+  const fetchAllPages = async (rpcName, extraParams = {}) => {
+    const rows = []
+    const pageSize = 1000
+    let offset = 0
+
+    while (true) {
+      const { data, error } = await supabase.rpc(rpcName, {
+        ...extraParams,
+        p_limit: pageSize,
+        p_offset: offset,
+      })
+      if (error) throw error
+      const batch = data || []
+      rows.push(...batch)
+      if (batch.length < pageSize) break
+      offset += pageSize
+    }
+    return rows
+  }
+
+  const downloadExcel = async ({ reportKey, rpcName, params = {}, sheetName, filename, columns, summary }) => {
+    setExporting(reportKey)
     setMessage('')
 
     try {
-      const rows = []
-      const pageSize = 1000
-      let offset = 0
-
-      while (true) {
-        const { data, error } = await supabase.rpc('report_all_customers_page_v1', {
-          p_limit: pageSize,
-          p_offset: offset,
-        })
-
-        if (error) {
-          setMessage(`تعذر تجهيز التقرير: ${error.message}`)
-          setExporting(false)
-          return
-        }
-
-        const batch = data || []
-        rows.push(...batch)
-
-        if (batch.length < pageSize) break
-        offset += pageSize
-      }
+      const rows = await fetchAllPages(rpcName, params)
       const workbook = new ExcelJS.Workbook()
       workbook.creator = 'Lovica Analytics'
       workbook.created = new Date()
 
-      const sheet = workbook.addWorksheet('العملاء', {
+      const sheet = workbook.addWorksheet(sheetName, {
         views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }],
       })
 
-      sheet.columns = [
-        { header: 'اسم العميل', key: 'customer_name', width: 28 },
-        { header: 'رقم الجوال', key: 'mobile', width: 18 },
-        { header: 'المدينة', key: 'city', width: 20 },
-        { header: 'عدد الطلبات', key: 'orders_count', width: 14 },
-        { header: 'إجمالي المشتريات', key: 'total_spent', width: 18 },
-        { header: 'أول طلب', key: 'first_order_at', width: 16 },
-        { header: 'آخر طلب', key: 'last_order_at', width: 16 },
-        { header: 'مدة الغياب بالأيام', key: 'days_inactive', width: 18 },
-        { header: 'حالة العميل', key: 'inactivity_status', width: 18 },
-      ]
+      sheet.columns = columns.map((c) => ({
+        header: c.header,
+        key: c.key,
+        width: c.width || 18,
+      }))
 
       rows.forEach((r) => {
-        sheet.addRow({
-          customer_name: r.customer_name || '—',
-          mobile: r.mobile || '—',
-          city: r.city || '—',
-          orders_count: Number(r.orders_count || 0),
-          total_spent: Number(r.total_spent || 0),
-          first_order_at: r.first_order_at ? new Date(r.first_order_at) : null,
-          last_order_at: r.last_order_at ? new Date(r.last_order_at) : null,
-          days_inactive: r.days_inactive == null ? null : Number(r.days_inactive),
-          inactivity_status: r.inactivity_status || '—',
+        const row = {}
+        columns.forEach((c) => {
+          let value = r[c.key]
+          if (c.type === 'number') value = Number(value || 0)
+          if (c.type === 'date') value = value ? new Date(value) : null
+          row[c.key] = value ?? '—'
         })
+        sheet.addRow(row)
       })
 
       const header = sheet.getRow(1)
       header.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-      header.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF111111' },
-      }
+      header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF111111' } }
       header.alignment = { horizontal: 'center', vertical: 'middle' }
       header.height = 24
 
-      sheet.getColumn('orders_count').numFmt = '0'
-      sheet.getColumn('total_spent').numFmt = '#,##0.00 "ر.س"'
-      sheet.getColumn('first_order_at').numFmt = 'yyyy-mm-dd'
-      sheet.getColumn('last_order_at').numFmt = 'yyyy-mm-dd'
-      sheet.getColumn('days_inactive').numFmt = '0'
+      columns.forEach((c, index) => {
+        const col = sheet.getColumn(index + 1)
+        if (c.format === 'money') col.numFmt = '#,##0.00 "ر.س"'
+        if (c.type === 'date') col.numFmt = 'yyyy-mm-dd'
+        if (c.type === 'number' && c.format !== 'money') col.numFmt = '#,##0'
+      })
 
-      sheet.autoFilter = {
-        from: 'A1',
-        to: 'I1',
+      if (columns.length) {
+        sheet.autoFilter = {
+          from: { row: 1, column: 1 },
+          to: { row: 1, column: columns.length },
+        }
       }
 
       sheet.eachRow((row, rowNumber) => {
-        row.alignment = { vertical: 'middle', horizontal: rowNumber === 1 ? 'center' : 'right' }
+        row.alignment = {
+          vertical: 'middle',
+          horizontal: rowNumber === 1 ? 'center' : 'right',
+        }
         if (rowNumber > 1) row.height = 20
       })
 
@@ -748,24 +741,161 @@ function Reports() {
 
       const now = new Date()
       const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-      const filename = `Lovica_Customers_Report_${stamp}.xlsx`
-
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = filename
+      a.download = `${filename}_${stamp}.xlsx`
       document.body.appendChild(a)
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
 
-      setMessage(`تم استخراج التقرير بنجاح — ${number(rows.length)} عميل.`)
+      setMessage(`تم استخراج ${summary} بنجاح — ${number(rows.length)} سجل.`)
     } catch (err) {
       setMessage(`تعذر استخراج التقرير: ${err?.message || 'خطأ غير معروف'}`)
     } finally {
-      setExporting(false)
+      setExporting('')
     }
   }
+
+  const customerColumns = [
+    { header: 'اسم العميل', key: 'customer_name', width: 28 },
+    { header: 'رقم الجوال', key: 'mobile', width: 18 },
+    { header: 'المدينة', key: 'city', width: 20 },
+    { header: 'عدد الطلبات', key: 'orders_count', width: 14, type: 'number' },
+    { header: 'إجمالي المشتريات', key: 'total_spent', width: 18, type: 'number', format: 'money' },
+    { header: 'أول طلب', key: 'first_order_at', width: 16, type: 'date' },
+    { header: 'آخر طلب', key: 'last_order_at', width: 16, type: 'date' },
+    { header: 'مدة الغياب بالأيام', key: 'days_inactive', width: 18, type: 'number' },
+    { header: 'حالة العميل', key: 'inactivity_status', width: 20 },
+  ]
+
+  const reports = [
+    {
+      key: 'all-customers',
+      title: 'تقرير جميع العملاء',
+      desc: 'جميع العملاء بدون تكرار مع الطلبات والمشتريات وأول وآخر طلب ومدة الغياب.',
+      action: () => downloadExcel({
+        reportKey: 'all-customers',
+        rpcName: 'report_all_customers_page_v1',
+        sheetName: 'العملاء',
+        filename: 'Lovica_Customers_Report',
+        columns: customerColumns,
+        summary: 'تقرير جميع العملاء',
+      }),
+    },
+    {
+      key: 'top-customers',
+      title: 'تقرير أفضل العملاء',
+      desc: 'ترتيب العملاء حسب إجمالي المشتريات مع عدد الطلبات ومتوسط قيمة الطلب.',
+      action: () => downloadExcel({
+        reportKey: 'top-customers',
+        rpcName: 'report_top_customers_page_v1',
+        sheetName: 'أفضل العملاء',
+        filename: 'Lovica_Top_Customers',
+        columns: [
+          { header: 'اسم العميل', key: 'customer_name', width: 28 },
+          { header: 'رقم الجوال', key: 'mobile', width: 18 },
+          { header: 'المدينة', key: 'city', width: 20 },
+          { header: 'عدد الطلبات', key: 'orders_count', width: 14, type: 'number' },
+          { header: 'إجمالي المشتريات', key: 'total_spent', width: 18, type: 'number', format: 'money' },
+          { header: 'متوسط الطلب', key: 'avg_order_value', width: 18, type: 'number', format: 'money' },
+          { header: 'آخر طلب', key: 'last_order_at', width: 16, type: 'date' },
+        ],
+        summary: 'تقرير أفضل العملاء',
+      }),
+    },
+    {
+      key: 'products',
+      title: 'تقرير المنتجات',
+      desc: 'أداء المنتجات: الكمية المباعة، عدد الطلبات، المبيعات، المسترجع وصافي المبيعات.',
+      action: () => downloadExcel({
+        reportKey: 'products',
+        rpcName: 'report_products_page_v1',
+        sheetName: 'المنتجات',
+        filename: 'Lovica_Products_Report',
+        columns: [
+          { header: 'اسم المنتج', key: 'product_name', width: 36 },
+          { header: 'SKU', key: 'sku', width: 20 },
+          { header: 'عدد الطلبات', key: 'orders_count', width: 14, type: 'number' },
+          { header: 'الكمية المباعة', key: 'quantity_sold', width: 16, type: 'number' },
+          { header: 'إجمالي المبيعات', key: 'gross_sales', width: 18, type: 'number', format: 'money' },
+          { header: 'المسترجع', key: 'refunded_amount', width: 16, type: 'number', format: 'money' },
+          { header: 'صافي المبيعات', key: 'net_sales', width: 18, type: 'number', format: 'money' },
+          { header: 'آخر بيع', key: 'last_sale_at', width: 16, type: 'date' },
+        ],
+        summary: 'تقرير المنتجات',
+      }),
+    },
+    {
+      key: 'orders',
+      title: 'تقرير الطلبات',
+      desc: 'جميع الطلبات المخزنة مع العميل والتاريخ والحالة والدفع والشحن والقيمة.',
+      action: () => downloadExcel({
+        reportKey: 'orders',
+        rpcName: 'report_orders_page_v1',
+        sheetName: 'الطلبات',
+        filename: 'Lovica_Orders_Report',
+        columns: [
+          { header: 'رقم الطلب', key: 'reference_id', width: 18 },
+          { header: 'تاريخ الطلب', key: 'order_date', width: 18, type: 'date' },
+          { header: 'اسم العميل', key: 'customer_name', width: 28 },
+          { header: 'الجوال', key: 'mobile', width: 18 },
+          { header: 'المدينة', key: 'city', width: 18 },
+          { header: 'الحالة', key: 'status_name', width: 18 },
+          { header: 'طريقة الدفع', key: 'payment_method', width: 18 },
+          { header: 'شركة الشحن', key: 'shipping_company', width: 20 },
+          { header: 'إجمالي الطلب', key: 'total_amount', width: 18, type: 'number', format: 'money' },
+          { header: 'المسترجع', key: 'refunded_amount', width: 16, type: 'number', format: 'money' },
+          { header: 'الصافي', key: 'net_amount', width: 16, type: 'number', format: 'money' },
+        ],
+        summary: 'تقرير الطلبات',
+      }),
+    },
+    {
+      key: 'cities',
+      title: 'تقرير المدن',
+      desc: 'أداء كل مدينة حسب العملاء والطلبات وإجمالي وصافي المبيعات ومتوسط الطلب.',
+      action: () => downloadExcel({
+        reportKey: 'cities',
+        rpcName: 'report_cities_page_v1',
+        sheetName: 'المدن',
+        filename: 'Lovica_Cities_Report',
+        columns: [
+          { header: 'المدينة', key: 'city', width: 24 },
+          { header: 'عدد العملاء', key: 'customers_count', width: 16, type: 'number' },
+          { header: 'عدد الطلبات', key: 'orders_count', width: 16, type: 'number' },
+          { header: 'إجمالي المبيعات', key: 'gross_sales', width: 18, type: 'number', format: 'money' },
+          { header: 'المسترجع', key: 'refunded_amount', width: 16, type: 'number', format: 'money' },
+          { header: 'صافي المبيعات', key: 'net_sales', width: 18, type: 'number', format: 'money' },
+          { header: 'متوسط الطلب', key: 'avg_order_value', width: 18, type: 'number', format: 'money' },
+          { header: 'آخر طلب', key: 'last_order_at', width: 16, type: 'date' },
+        ],
+        summary: 'تقرير المدن',
+      }),
+    },
+    {
+      key: 'sales',
+      title: 'تقرير المبيعات اليومية',
+      desc: 'ملخص يومي للطلبات والعملاء والمبيعات والمسترجعات وصافي المبيعات ومتوسط الطلب.',
+      action: () => downloadExcel({
+        reportKey: 'sales',
+        rpcName: 'report_daily_sales_page_v1',
+        sheetName: 'المبيعات اليومية',
+        filename: 'Lovica_Daily_Sales',
+        columns: [
+          { header: 'التاريخ', key: 'sales_date', width: 16 },
+          { header: 'عدد الطلبات', key: 'orders_count', width: 16, type: 'number' },
+          { header: 'عدد العملاء', key: 'customers_count', width: 16, type: 'number' },
+          { header: 'إجمالي المبيعات', key: 'gross_sales', width: 18, type: 'number', format: 'money' },
+          { header: 'المسترجع', key: 'refunded_amount', width: 16, type: 'number', format: 'money' },
+          { header: 'صافي المبيعات', key: 'net_sales', width: 18, type: 'number', format: 'money' },
+          { header: 'متوسط الطلب', key: 'avg_order_value', width: 18, type: 'number', format: 'money' },
+        ],
+        summary: 'تقرير المبيعات اليومية',
+      }),
+    },
+  ]
 
   return (
     <>
@@ -773,39 +903,63 @@ function Reports() {
         <div>
           <div className="eyebrow">REPORTS</div>
           <h2>التقارير</h2>
-          <p className="muted">تقارير جاهزة للاستخراج من بيانات لوفيكا.</p>
+          <p className="muted">تقارير Excel جاهزة للاستخراج من بيانات لوفيكا.</p>
         </div>
       </section>
 
       <section className="panel">
         <div className="panel-title-row">
           <div>
-            <div className="eyebrow">CUSTOMERS REPORT</div>
-            <h2>تقرير جميع العملاء</h2>
-            <p className="muted">
-              جميع العملاء بدون تكرار مع عدد الطلبات، إجمالي المشتريات، أول وآخر طلب،
-              ومدة الغياب منذ آخر طلب.
-            </p>
+            <div className="eyebrow">INACTIVE CUSTOMERS</div>
+            <h2>تقرير العملاء غير النشطين</h2>
+            <p className="muted">اختر مدة الغياب ثم استخرج العملاء الذين لم يطلبوا منذ هذه المدة.</p>
           </div>
-
-          <button
-            type="button"
-            onClick={exportCustomersReport}
-            disabled={exporting}
-          >
-            {exporting ? 'جاري تجهيز Excel...' : 'استخراج Excel'}
-          </button>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={inactiveDays} onChange={(e) => setInactiveDays(Number(e.target.value))}>
+              <option value={30}>أكثر من 30 يوم</option>
+              <option value={60}>أكثر من 60 يوم</option>
+              <option value={90}>أكثر من 90 يوم</option>
+              <option value={180}>أكثر من 180 يوم</option>
+              <option value={365}>أكثر من سنة</option>
+            </select>
+            <button
+              type="button"
+              disabled={!!exporting}
+              onClick={() => downloadExcel({
+                reportKey: 'inactive',
+                rpcName: 'report_inactive_customers_page_v1',
+                params: { p_days: inactiveDays },
+                sheetName: 'العملاء غير النشطين',
+                filename: `Lovica_Inactive_Customers_${inactiveDays}_Days`,
+                columns: customerColumns,
+                summary: 'تقرير العملاء غير النشطين',
+              })}
+            >
+              {exporting === 'inactive' ? 'جاري تجهيز Excel...' : 'استخراج Excel'}
+            </button>
+          </div>
         </div>
-
-        <section className="details comparison-details" style={{ marginTop: 18 }}>
-          <div><span>التقرير</span><strong>جميع العملاء</strong></div>
-          <div><span>الفترة</span><strong>من بداية المتجر حتى اليوم</strong></div>
-          <div><span>التنسيق</span><strong>Excel (.xlsx)</strong></div>
-          <div><span>الترتيب</span><strong>الأكثر غيابًا أولًا</strong></div>
-        </section>
-
-        {message && <div className="info" style={{ marginTop: 14 }}>{message}</div>}
       </section>
+
+      <div className="analytics-grid">
+        {reports.map((report) => (
+          <section className="panel" key={report.key}>
+            <div className="eyebrow">EXCEL REPORT</div>
+            <h2>{report.title}</h2>
+            <p className="muted">{report.desc}</p>
+            <button
+              type="button"
+              onClick={report.action}
+              disabled={!!exporting}
+              style={{ marginTop: 14 }}
+            >
+              {exporting === report.key ? 'جاري تجهيز Excel...' : 'استخراج Excel'}
+            </button>
+          </section>
+        ))}
+      </div>
+
+      {message && <div className="info" style={{ marginTop: 14 }}>{message}</div>}
     </>
   )
 }
