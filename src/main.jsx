@@ -408,6 +408,8 @@ function Overview() {
             <SimpleTable rows={snapshot.shipping || []} columns={[
               { key: 'shipping_method', label: 'شركة / نوع الشحن' },
               { key: 'orders_count', label: 'عدد الطلبات', render: (r) => number(r.orders_count) },
+              { key: 'cod_orders_count', label: 'طلبات دفع عند الاستلام', render: (r) => number(r.cod_orders_count) },
+              { key: 'non_cod_orders_count', label: 'طلبات بدون دفع عند الاستلام', render: (r) => number(r.non_cod_orders_count) },
               { key: 'shipping_fees', label: 'رسوم الشحن', render: (r) => money(r.shipping_fees) },
               { key: 'cod_fees', label: 'رسوم الدفع عند الاستلام', render: (r) => money(r.cod_fees) },
               { key: 'total_fees', label: 'الإجمالي', render: (r) => money(r.total_fees) },
