@@ -569,23 +569,84 @@ function Overview() {
 function CustomerSearch() {
   const [phone, setPhone] = useState('')
   const [customer, setCustomer] = useState(null)
+  const [customerOrders, setCustomerOrders] = useState([])
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+
   const search = async (e) => {
-    e.preventDefault(); setLoading(true); setMessage(''); setCustomer(null)
-    const { data, error } = await supabase.rpc('search_customer_by_phone', { p_phone: phone.trim() })
-    if (error) setMessage(`خطأ البحث: ${error.message}`)
-    else if (!data?.length) setMessage('لم يتم العثور على عميل بهذا الرقم.')
-    else setCustomer(data[0])
+    e.preventDefault()
+    setLoading(true)
+    setMessage('')
+    setCustomer(null)
+    setCustomerOrders([])
+
+    const { data, error } = await supabase.rpc('search_customer_by_phone', {
+      p_phone: phone.trim(),
+    })
+
+    if (error) {
+      setMessage(`خطأ البحث: ${error.message}`)
+      setLoading(false)
+      return
+    }
+
+    if (!data?.length) {
+      setMessage('لم يتم العثور على عميل بهذا الرقم.')
+      setLoading(false)
+      return
+    }
+
+    const foundCustomer = data[0]
+    setCustomer(foundCustomer)
+
+    if (foundCustomer.customer_id) {
+      const ordersResult = await supabase.rpc('dashboard_customer_orders_v1', {
+        p_customer_id: foundCustomer.customer_id,
+      })
+
+      if (ordersResult.error) {
+        setMessage(`تم العثور على العميل، لكن تعذر تحميل الطلبات: ${ordersResult.error.message}`)
+      } else {
+        setCustomerOrders(ordersResult.data || [])
+      }
+    }
+
     setLoading(false)
   }
+
   return <>
     <section className="panel"><h2>بحث العملاء</h2><p className="muted">ابحث باستخدام رقم جوال العميل.</p><form className="search" onSubmit={search}>
       <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="05XXXXXXXX" inputMode="tel" required /><button disabled={loading}>{loading ? 'جاري البحث...' : 'بحث'}</button>
     </form>{message && <div className="info">{message}</div>}</section>
-    {customer && <><section className="panel customer"><div className="customer-icon">👤</div><div><h2>{customer.customer_name || 'عميل'}</h2><div className="customer-details"><span>📱 {customer.mobile || '—'}</span><span>✉️ {customer.email || '—'}</span><span>📍 {customer.city || '—'}</span></div></div></section>
+
+    {customer && <>
+      <section className="panel customer"><div className="customer-icon">👤</div><div><h2>{customer.customer_name || 'عميل'}</h2><div className="customer-details"><span>📱 {customer.mobile || '—'}</span><span>✉️ {customer.email || '—'}</span><span>📍 {customer.city || '—'}</span></div></div></section>
+
       <section className="cards"><MetricCard label="عدد الطلبات" value={number(customer.total_orders)} /><MetricCard label="إجمالي المشتريات" value={money(customer.total_spent)} /><MetricCard label="متوسط الطلب" value={money(customer.average_order_value)} /><MetricCard label="طلبات بها استرجاع" value={number(customer.refunded_orders)} /></section>
-      <section className="panel details"><div><span>أول طلب</span><strong>{date(customer.first_order_at)}</strong></div><div><span>آخر طلب</span><strong>{date(customer.last_order_at)}</strong></div><div><span>إجمالي المسترجع</span><strong>{money(customer.total_refunded)}</strong></div></section></>}
+
+      <section className="panel details"><div><span>أول طلب</span><strong>{date(customer.first_order_at)}</strong></div><div><span>آخر طلب</span><strong>{date(customer.last_order_at)}</strong></div><div><span>إجمالي المسترجع</span><strong>{money(customer.total_refunded)}</strong></div></section>
+
+      <section className="panel">
+        <div className="panel-title-row">
+          <div>
+            <h2>طلبات العميل</h2>
+            <p className="muted">جميع طلبات العميل مرتبة من الأحدث إلى الأقدم.</p>
+          </div>
+          <span className="count-chip">{number(customerOrders.length)} طلب</span>
+        </div>
+
+        <SimpleTable
+          rows={customerOrders}
+          emptyText="لا توجد طلبات مسجلة لهذا العميل."
+          columns={[
+            { key: 'reference_id', label: 'رقم الطلب', render: (r) => `#${r.reference_id || r.salla_order_id || '—'}` },
+            { key: 'order_date', label: 'التاريخ', render: (r) => date(r.order_date) },
+            { key: 'total_amount', label: 'القيمة', render: (r) => money(r.total_amount) },
+            { key: 'status_name', label: 'الحالة', render: (r) => r.status_name || r.status_slug || '—' },
+          ]}
+        />
+      </section>
+    </>}
   </>
 }
 
