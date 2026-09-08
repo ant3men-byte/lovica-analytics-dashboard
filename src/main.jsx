@@ -599,16 +599,14 @@ function CustomerSearch() {
     const foundCustomer = data[0]
     setCustomer(foundCustomer)
 
-    if (foundCustomer.customer_id) {
-      const ordersResult = await supabase.rpc('dashboard_customer_orders_v1', {
-        p_customer_id: foundCustomer.customer_id,
-      })
+    const ordersResult = await supabase.rpc('dashboard_customer_orders_by_phone_v1', {
+      p_phone: phone.trim(),
+    })
 
-      if (ordersResult.error) {
-        setMessage(`تم العثور على العميل، لكن تعذر تحميل الطلبات: ${ordersResult.error.message}`)
-      } else {
-        setCustomerOrders(ordersResult.data || [])
-      }
+    if (ordersResult.error) {
+      setMessage(`تم العثور على العميل، لكن تعذر تحميل كل الطلبات: ${ordersResult.error.message}`)
+    } else {
+      setCustomerOrders(ordersResult.data || [])
     }
 
     setLoading(false)
