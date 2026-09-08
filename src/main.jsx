@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 import './styles.css'
-import './styles-v4.css'
+
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
