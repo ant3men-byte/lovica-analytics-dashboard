@@ -21,6 +21,11 @@ const money = (value) =>
     maximumFractionDigits: 2,
   }).format(Number(value || 0))
 
+const number = (value) =>
+  new Intl.NumberFormat('ar-SA', {
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0))
+
 const date = (value) =>
   value
     ? new Intl.DateTimeFormat('ar-SA', {
@@ -90,7 +95,6 @@ function Login() {
     <main className="login-page">
       <section className="brand-area">
         <div className="logo">L</div>
-
         <div>
           <div className="eyebrow">LOVICA BEAUTY</div>
           <h1>لوحة التحليلات</h1>
@@ -101,10 +105,7 @@ function Login() {
       <section className="login-card">
         <div className="eyebrow">دخول آمن</div>
         <h2>تسجيل الدخول</h2>
-
-        <p className="muted">
-          استخدم حسابك المعتمد في لوفيكا.
-        </p>
+        <p className="muted">استخدم حسابك المعتمد في لوفيكا.</p>
 
         <form onSubmit={login}>
           <label>البريد الإلكتروني</label>
@@ -130,7 +131,6 @@ function Login() {
           />
 
           {error && <div className="error">{error}</div>}
-
           {info && <div className="info">{info}</div>}
 
           <button disabled={loading}>
@@ -152,9 +152,7 @@ function Login() {
           </button>
         </form>
 
-        <div className="security">
-          اتصال آمن عبر Supabase Auth
-        </div>
+        <div className="security">اتصال آمن عبر Supabase Auth</div>
       </section>
     </main>
   )
@@ -195,9 +193,7 @@ function ResetPassword({ onDone }) {
       return
     }
 
-    setInfo(
-      'تم تغيير كلمة المرور بنجاح. جاري إعادتك لتسجيل الدخول...'
-    )
+    setInfo('تم تغيير كلمة المرور بنجاح. جاري إعادتك لتسجيل الدخول...')
 
     await supabase.auth.signOut()
 
@@ -218,25 +214,17 @@ function ResetPassword({ onDone }) {
     <main className="login-page">
       <section className="brand-area">
         <div className="logo">L</div>
-
         <div>
           <div className="eyebrow">LOVICA BEAUTY</div>
           <h1>تعيين كلمة مرور جديدة</h1>
-
-          <p>
-            اختر كلمة مرور جديدة لحسابك المعتمد في لوحة لوفيكا.
-          </p>
+          <p>اختر كلمة مرور جديدة لحسابك المعتمد في لوحة لوفيكا.</p>
         </div>
       </section>
 
       <section className="login-card">
         <div className="eyebrow">استعادة الحساب</div>
-
         <h2>كلمة المرور الجديدة</h2>
-
-        <p className="muted">
-          اكتب كلمة مرور جديدة ثم أكدها.
-        </p>
+        <p className="muted">اكتب كلمة مرور جديدة ثم أكدها.</p>
 
         <form onSubmit={updatePassword}>
           <label>كلمة المرور الجديدة</label>
@@ -262,13 +250,10 @@ function ResetPassword({ onDone }) {
           />
 
           {error && <div className="error">{error}</div>}
-
           {info && <div className="info">{info}</div>}
 
           <button disabled={loading}>
-            {loading
-              ? 'جاري الحفظ...'
-              : 'حفظ كلمة المرور الجديدة'}
+            {loading ? 'جاري الحفظ...' : 'حفظ كلمة المرور الجديدة'}
           </button>
         </form>
 
@@ -277,6 +262,135 @@ function ResetPassword({ onDone }) {
         </div>
       </section>
     </main>
+  )
+}
+
+function Overview() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    async function loadOverview() {
+      setLoading(true)
+      setError('')
+
+      const { data, error } = await supabase.rpc('dashboard_overview_v1')
+
+      if (!active) return
+
+      if (error) {
+        setError(`تعذر تحميل المؤشرات: ${error.message}`)
+        setLoading(false)
+        return
+      }
+
+      setData(data?.[0] || null)
+      setLoading(false)
+    }
+
+    loadOverview()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (loading) {
+    return (
+      <section className="panel">
+        جاري تحميل مؤشرات الداشبورد...
+      </section>
+    )
+  }
+
+  if (error) {
+    return <section className="panel error">{error}</section>
+  }
+
+  if (!data) {
+    return (
+      <section className="panel">
+        لا توجد بيانات متاحة حاليًا.
+      </section>
+    )
+  }
+
+  return (
+    <>
+      <section className="panel">
+        <div className="eyebrow">OVERVIEW</div>
+        <h2>ملخص المتجر</h2>
+        <p className="muted">
+          هذه الأرقام حاليًا مبنية على جميع الطلبات المستوردة. سنضيف لاحقًا
+          تعريفًا محاسبيًا أدق للمبيعات حسب حالات الطلب والمرتجعات.
+        </p>
+      </section>
+
+      <section className="cards">
+        <div className="card">
+          <span>إجمالي الطلبات</span>
+          <strong>{number(data.total_orders)}</strong>
+        </div>
+
+        <div className="card">
+          <span>إجمالي العملاء</span>
+          <strong>{number(data.total_customers)}</strong>
+        </div>
+
+        <div className="card">
+          <span>إجمالي قيمة الطلبات</span>
+          <strong>{money(data.total_sales)}</strong>
+        </div>
+
+        <div className="card">
+          <span>متوسط قيمة الطلب</span>
+          <strong>{money(data.average_order_value)}</strong>
+        </div>
+      </section>
+
+      <section className="cards">
+        <div className="card">
+          <span>إجمالي المسترجع</span>
+          <strong>{money(data.total_refunded)}</strong>
+        </div>
+
+        <div className="card">
+          <span>طلبات بها استرجاع</span>
+          <strong>{number(data.refunded_orders)}</strong>
+        </div>
+
+        <div className="card">
+          <span>أول طلب في البيانات</span>
+          <strong>{date(data.first_order_at)}</strong>
+        </div>
+
+        <div className="card">
+          <span>آخر طلب في البيانات</span>
+          <strong>{date(data.last_order_at)}</strong>
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2>حالة النسخة الحالية</h2>
+        <div className="details">
+          <div>
+            <span>المصدر</span>
+            <strong>Supabase</strong>
+          </div>
+          <div>
+            <span>التحديث الحي من سلة</span>
+            <strong>لم يُفعّل بعد</strong>
+          </div>
+          <div>
+            <span>احتساب الربح التاريخي</span>
+            <strong>بانتظار بيانات التكلفة</strong>
+          </div>
+        </div>
+      </section>
+    </>
   )
 }
 
@@ -293,12 +407,9 @@ function CustomerSearch() {
     setMessage('')
     setCustomer(null)
 
-    const { data, error } = await supabase.rpc(
-      'search_customer_by_phone',
-      {
-        p_phone: phone.trim(),
-      }
-    )
+    const { data, error } = await supabase.rpc('search_customer_by_phone', {
+      p_phone: phone.trim(),
+    })
 
     if (error) {
       setMessage(`خطأ البحث: ${error.message}`)
@@ -315,10 +426,7 @@ function CustomerSearch() {
     <>
       <section className="panel">
         <h2>بحث العملاء</h2>
-
-        <p className="muted">
-          ابحث باستخدام رقم جوال العميل.
-        </p>
+        <p className="muted">ابحث باستخدام رقم جوال العميل.</p>
 
         <form className="search" onSubmit={search}>
           <input
@@ -347,9 +455,7 @@ function CustomerSearch() {
 
               <div className="customer-details">
                 <span>📱 {customer.mobile || '—'}</span>
-
                 <span>✉️ {customer.email || '—'}</span>
-
                 <span>📍 {customer.city || '—'}</span>
               </div>
             </div>
@@ -358,60 +464,39 @@ function CustomerSearch() {
           <section className="cards">
             <div className="card">
               <span>عدد الطلبات</span>
-
-              <strong>
-                {customer.total_orders || 0}
-              </strong>
+              <strong>{number(customer.total_orders)}</strong>
             </div>
 
             <div className="card">
               <span>إجمالي المشتريات</span>
-
-              <strong>
-                {money(customer.total_spent)}
-              </strong>
+              <strong>{money(customer.total_spent)}</strong>
             </div>
 
             <div className="card">
               <span>متوسط الطلب</span>
-
-              <strong>
-                {money(customer.average_order_value)}
-              </strong>
+              <strong>{money(customer.average_order_value)}</strong>
             </div>
 
             <div className="card">
               <span>طلبات بها استرجاع</span>
-
-              <strong>
-                {customer.refunded_orders || 0}
-              </strong>
+              <strong>{number(customer.refunded_orders)}</strong>
             </div>
           </section>
 
           <section className="panel details">
             <div>
               <span>أول طلب</span>
-
-              <strong>
-                {date(customer.first_order_at)}
-              </strong>
+              <strong>{date(customer.first_order_at)}</strong>
             </div>
 
             <div>
               <span>آخر طلب</span>
-
-              <strong>
-                {date(customer.last_order_at)}
-              </strong>
+              <strong>{date(customer.last_order_at)}</strong>
             </div>
 
             <div>
               <span>إجمالي المسترجع</span>
-
-              <strong>
-                {money(customer.total_refunded)}
-              </strong>
+              <strong>{money(customer.total_refunded)}</strong>
             </div>
           </section>
         </>
@@ -421,15 +506,17 @@ function CustomerSearch() {
 }
 
 function Dashboard({ profile }) {
+  const [page, setPage] = useState('overview')
+
   const logout = async () => {
     await supabase.auth.signOut()
   }
 
-  const allowed = [
-    'owner',
-    'admin',
-    'customer_service',
-  ].includes(profile.role)
+  const canSearchCustomers = ['owner', 'admin', 'customer_service'].includes(
+    profile.role
+  )
+
+  const pageTitle = page === 'overview' ? 'الرئيسية' : 'بحث العملاء'
 
   return (
     <div className="dashboard">
@@ -443,25 +530,45 @@ function Dashboard({ profile }) {
           </div>
         </div>
 
-        <nav>
-          <div className="nav-active">
-            ⌕ بحث العملاء
-          </div>
+        <nav style={{ display: 'grid', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setPage('overview')}
+            className={page === 'overview' ? 'nav-active' : ''}
+            style={{
+              width: '100%',
+              textAlign: 'right',
+              background: page === 'overview' ? '#252525' : 'transparent',
+              color: '#fff',
+              padding: '13px',
+            }}
+          >
+            ◫ الرئيسية
+          </button>
+
+          {canSearchCustomers && (
+            <button
+              type="button"
+              onClick={() => setPage('customers')}
+              className={page === 'customers' ? 'nav-active' : ''}
+              style={{
+                width: '100%',
+                textAlign: 'right',
+                background: page === 'customers' ? '#252525' : 'transparent',
+                color: '#fff',
+                padding: '13px',
+              }}
+            >
+              ⌕ بحث العملاء
+            </button>
+          )}
         </nav>
 
         <div className="user">
-          <strong>
-            {profile.full_name || 'مستخدم'}
-          </strong>
+          <strong>{profile.full_name || 'مستخدم'}</strong>
+          <span>{profile.role}</span>
 
-          <span>
-            {profile.role}
-          </span>
-
-          <button
-            className="logout"
-            onClick={logout}
-          >
+          <button className="logout" onClick={logout}>
             تسجيل الخروج
           </button>
         </div>
@@ -470,25 +577,16 @@ function Dashboard({ profile }) {
       <main className="main">
         <header>
           <div>
-            <div className="eyebrow">
-              LOVICA ANALYTICS
-            </div>
-
-            <h1>بحث العملاء</h1>
+            <div className="eyebrow">LOVICA ANALYTICS</div>
+            <h1>{pageTitle}</h1>
           </div>
 
-          <div className="safe">
-            ✓ جلسة محمية
-          </div>
+          <div className="safe">✓ جلسة محمية</div>
         </header>
 
-        {allowed ? (
-          <CustomerSearch />
-        ) : (
-          <section className="panel">
-            ليس لديك صلاحية لاستخدام بحث العملاء.
-          </section>
-        )}
+        {page === 'overview' && <Overview />}
+
+        {page === 'customers' && canSearchCustomers && <CustomerSearch />}
       </main>
     </div>
   )
@@ -507,8 +605,7 @@ function App() {
 
     const looksLikeRecovery =
       hash.includes('type=recovery') ||
-      new URLSearchParams(window.location.search).get('type') ===
-        'recovery'
+      new URLSearchParams(window.location.search).get('type') === 'recovery'
 
     if (looksLikeRecovery) {
       setRecoveryMode(true)
@@ -520,29 +617,21 @@ function App() {
           setProfile(null)
           setLoading(false)
         }
-
         return
       }
 
       const { data, error } = await supabase
         .from('profiles')
-        .select(
-          'user_id, full_name, role, active'
-        )
+        .select('user_id, full_name, role, active')
         .eq('user_id', user.id)
         .single()
 
       if (!active) return
 
       if (error) {
-        console.error(
-          'Profile load error:',
-          error
-        )
-
+        console.error('Profile load error:', error)
         setProfile(null)
         setLoading(false)
-
         return
       }
 
@@ -550,56 +639,47 @@ function App() {
       setLoading(false)
     }
 
-    supabase.auth
-      .getSession()
-      .then(({ data, error }) => {
-        if (!active) return
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return
 
-        if (error) {
-          console.error(
-            'Session error:',
-            error
-          )
+      if (error) {
+        console.error('Session error:', error)
+        setLoading(false)
+        return
+      }
 
-          setLoading(false)
-          return
-        }
+      setSession(data.session)
 
-        setSession(data.session)
+      if (looksLikeRecovery && data.session) {
+        setRecoveryMode(true)
+        setLoading(false)
+        return
+      }
 
-        if (looksLikeRecovery && data.session) {
-          setRecoveryMode(true)
-          setLoading(false)
-          return
-        }
-
-        load(data.session?.user)
-      })
+      load(data.session?.user)
+    })
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      async (event, nextSession) => {
-        if (!active) return
+    } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+      if (!active) return
 
-        setSession(nextSession)
+      setSession(nextSession)
 
-        if (event === 'PASSWORD_RECOVERY') {
-          setRecoveryMode(true)
-          setLoading(false)
-          return
-        }
-
-        if (recoveryMode) {
-          setLoading(false)
-          return
-        }
-
-        setLoading(true)
-
-        await load(nextSession?.user)
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecoveryMode(true)
+        setLoading(false)
+        return
       }
-    )
+
+      if (recoveryMode) {
+        setLoading(false)
+        return
+      }
+
+      setLoading(true)
+      await load(nextSession?.user)
+    })
 
     return () => {
       active = false
@@ -608,19 +688,11 @@ function App() {
   }, [recoveryMode])
 
   if (loading) {
-    return (
-      <div className="loading">
-        جاري تحميل لوحة لوفيكا...
-      </div>
-    )
+    return <div className="loading">جاري تحميل لوحة لوفيكا...</div>
   }
 
   if (recoveryMode && session) {
-    return (
-      <ResetPassword
-        onDone={() => setRecoveryMode(false)}
-      />
-    )
+    return <ResetPassword onDone={() => setRecoveryMode(false)} />
   }
 
   if (!session) {
@@ -628,16 +700,10 @@ function App() {
   }
 
   if (!profile?.active) {
-    return (
-      <div className="loading">
-        الحساب غير مخوّل أو غير نشط.
-      </div>
-    )
+    return <div className="loading">الحساب غير مخوّل أو غير نشط.</div>
   }
 
   return <Dashboard profile={profile} />
 }
 
-ReactDOM.createRoot(
-  document.getElementById('root')
-).render(<App />)
+ReactDOM.createRoot(document.getElementById('root')).render(<App />)
