@@ -169,4 +169,51 @@ header h1 { margin:5px 0; }
   .store-total-cards, .custom-date-range { grid-template-columns: 1fr; }
   .period-main-buttons { display: grid; grid-template-columns: 1fr 1fr; }
 }
+/* Lovica Homepage: all-time snapshot + period filter */
+.store-snapshot-heading { margin-top: 0; }
+.store-total-cards { grid-template-columns: repeat(3, 1fr); }
+.store-breakdowns { margin-bottom: 28px; }
+.period-filter-panel { display: grid; gap: 18px; }
+.period-main-buttons { margin-top: 0; }
+.custom-date-range { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 4px; }
+.custom-date-range label { margin: 0; display: grid; gap: 7px; }
+.custom-date-range label span { color: #777; font-size: 12px; }
+.custom-date-range input { background: #fbfaf8; }
+@media (max-width: 850px) {
+  .store-total-cards { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 550px) {
+  .store-total-cards, .custom-date-range { grid-template-columns: 1fr; }
+  .period-main-buttons { display: grid; grid-template-columns: 1fr 1fr; }
+}
+
+/* Fix: keep dashboard cards/tables inside the viewport */
+.main {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.analytics-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.analytics-grid > .panel {
+  min-width: 0;
+}
+
+.store-breakdowns .table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.store-breakdowns .analytics-table {
+  min-width: 560px;
+}
+
+@media (max-width: 1050px) {
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
