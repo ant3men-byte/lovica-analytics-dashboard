@@ -236,6 +236,10 @@ function SimpleTable({ columns, rows, emptyText = 'لا توجد بيانات م
 
 function Overview() {
   const [days, setDays] = useState(30)
+  const [periodMode, setPeriodMode] = useState('month')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
+  const [snapshot, setSnapshot] = useState(null)
   const [trend, setTrend] = useState([])
   const [compare, setCompare] = useState(null)
   const [products, setProducts] = useState([])
@@ -249,11 +253,63 @@ function Overview() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  const selectPreset = (mode, value) => {
+    setPeriodMode(mode)
+    setDays(value)
+  }
+
+  useEffect(() => {
+    let active = true
+    async function loadSnapshot() {
+      const result = await supabase.rpc('dashboard_store_snapshot_v1')
+      if (!active) return
+      if (result.error) {
+        setError(`تعذر تحميل صورة المتجر: ${result.error.message}`)
+        return
+      }
+      setSnapshot(result.data || null)
+    }
+    loadSnapshot()
+    return () => { active = false }
+  }, [])
+
   useEffect(() => {
     let active = true
     async function load() {
+      if (periodMode === 'custom' && (!customStart || !customEnd)) return
+      if (periodMode === 'custom' && customStart > customEnd) {
+        setError('تاريخ البداية يجب أن يكون قبل تاريخ النهاية.')
+        return
+      }
+
       setLoading(true)
       setError('')
+
+      if (periodMode === 'custom') {
+        const rangeR = await supabase.rpc('dashboard_date_range_bundle_v1', {
+          p_start_date: customStart,
+          p_end_date: customEnd,
+        })
+        if (!active) return
+        if (rangeR.error) {
+          setError(`تعذر تحميل الفترة المحددة: ${rangeR.error.message}`)
+          setLoading(false)
+          return
+        }
+        const d = rangeR.data || {}
+        setTrend(d.trend || [])
+        setCompare(d.compare || null)
+        setProducts((d.products || []).map(normalizeProductRow))
+        setCustomerSummary(d.customer_summary || null)
+        setTopCustomers(d.top_customers || [])
+        setCities(d.cities || [])
+        setOrderStatuses(d.order_statuses || [])
+        setTimeData(d.time_data || d.trend || [])
+        setProductPerformance(d.product_performance || [])
+        setUnsoldProducts(d.unsold_products || [])
+        setLoading(false)
+        return
+      }
 
       const results = await Promise.all([
         supabase.rpc('dashboard_daily_trend_v1', { p_days: days }),
@@ -291,7 +347,7 @@ function Overview() {
     }
     load()
     return () => { active = false }
-  }, [days])
+  }, [days, periodMode, customStart, customEnd])
 
   const trendSorted = useMemo(() => [...trend].sort((a, b) => String(a.day).localeCompare(String(b.day))), [trend])
   const todayKey = todayIso()
@@ -312,13 +368,21 @@ function Overview() {
   const topByRevenue = [...products].sort((a, b) => b.revenue - a.revenue || b.quantity - a.quantity).slice(0, 10)
 
   const periodDates = useMemo(() => {
+    if (periodMode === 'custom' && customStart && customEnd) {
+      const start = new Date(`${customStart}T00:00:00`)
+      const end = new Date(`${customEnd}T00:00:00`)
+      const length = Math.round((end - start) / 86400000) + 1
+      const prevEnd = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1)
+      const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - length + 1)
+      return { current: `${date(start)} — ${date(end)}`, previous: `${date(prevStart)} — ${date(prevEnd)}` }
+    }
     if (!trendSorted.length) return { current: '—', previous: '—' }
     const start = new Date(trendSorted[0].day)
     const end = new Date(trendSorted[trendSorted.length - 1].day)
     const prevEnd = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1)
     const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - days + 1)
     return { current: `${date(start)} — ${date(end)}`, previous: `${date(prevStart)} — ${date(prevEnd)}` }
-  }, [trendSorted, days])
+  }, [trendSorted, days, periodMode, customStart, customEnd])
 
   const bestDay = useMemo(() => {
     if (!timeData.length) return null
@@ -327,15 +391,55 @@ function Overview() {
 
   return (
     <>
-      <section className="panel hero-panel">
-        <div><div className="eyebrow">LOVICA LIVE PERFORMANCE</div><h2>أداء المتجر</h2><p className="muted">نظرة موحدة على المبيعات والعملاء والمنتجات والمدن والطلبات.</p></div>
-        <div className="period-buttons">
-          {[7, 30, 90, 365].map((option) => (
-            <button key={option} type="button" onClick={() => setDays(option)} className={days === option ? 'active' : 'inactive'}>
-              {option === 365 ? 'سنة' : `${option} يوم`}
-            </button>
-          ))}
+      <section className="section-heading store-snapshot-heading">
+        <div><div className="eyebrow">ALL-TIME STORE SNAPSHOT</div><h2>صورة المتجر بالكامل</h2><p className="muted">إجماليات ثابتة من أول طلب مسجل حتى اليوم، ولا تتأثر بفلتر الفترة.</p></div>
+      </section>
+
+      {snapshot && <>
+        <section className="cards store-total-cards">
+          <MetricCard label="إجمالي الطلبات" value={number(snapshot.total_orders)} featured />
+          <MetricCard label="العملاء بدون تكرار" value={number(snapshot.unique_customers)} />
+          <MetricCard label="إجمالي الإيرادات" value={money(snapshot.total_revenue)} featured />
+        </section>
+
+        <section className="analytics-grid store-breakdowns">
+          <section className="panel">
+            <div className="panel-title-row"><div><h2>الشحن</h2><p className="muted">توزيع جميع الطلبات حسب شركة / نوع الشحن.</p></div></div>
+            <SimpleTable rows={snapshot.shipping || []} columns={[
+              { key: 'shipping_method', label: 'شركة / نوع الشحن' },
+              { key: 'orders_count', label: 'الطلبات', render: (r) => number(r.orders_count) },
+              { key: 'revenue', label: 'الإيرادات', render: (r) => money(r.revenue) },
+            ]} />
+          </section>
+          <section className="panel">
+            <div className="panel-title-row"><div><h2>طرق الدفع</h2><p className="muted">توزيع جميع الطلبات حسب طريقة الدفع.</p></div></div>
+            <SimpleTable rows={snapshot.payments || []} columns={[
+              { key: 'payment_method', label: 'طريقة الدفع' },
+              { key: 'orders_count', label: 'الطلبات', render: (r) => number(r.orders_count) },
+              { key: 'revenue', label: 'الإيرادات', render: (r) => money(r.revenue) },
+            ]} />
+          </section>
+        </section>
+      </>}
+
+      <section className="panel period-filter-panel">
+        <div>
+          <div className="eyebrow">PERIOD FILTER</div>
+          <h2>تحليل الفترة</h2>
+          <p className="muted">الفلتر يؤثر فقط على التحليلات الموجودة أسفله.</p>
         </div>
+        <div className="period-buttons period-main-buttons">
+          <button type="button" onClick={() => selectPreset('today', 1)} className={periodMode === 'today' ? 'active' : 'inactive'}>اليوم</button>
+          <button type="button" onClick={() => selectPreset('week', 7)} className={periodMode === 'week' ? 'active' : 'inactive'}>أسبوع</button>
+          <button type="button" onClick={() => selectPreset('month', 30)} className={periodMode === 'month' ? 'active' : 'inactive'}>شهر</button>
+          <button type="button" onClick={() => setPeriodMode('custom')} className={periodMode === 'custom' ? 'active' : 'inactive'}>تحديد فترة</button>
+        </div>
+        {periodMode === 'custom' && (
+          <div className="custom-date-range">
+            <label><span>من</span><input type="date" value={customStart} max={customEnd || todayIso()} onChange={(e) => setCustomStart(e.target.value)} /></label>
+            <label><span>إلى</span><input type="date" value={customEnd} min={customStart || undefined} max={todayIso()} onChange={(e) => setCustomEnd(e.target.value)} /></label>
+          </div>
+        )}
       </section>
 
       {loading && <section className="panel">جاري تحميل التحليلات...</section>}
