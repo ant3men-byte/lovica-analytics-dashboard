@@ -402,6 +402,19 @@ function Overview() {
           <MetricCard label="إجمالي الإيرادات" value={money(snapshot.total_revenue)} featured />
         </section>
 
+        <section className="section-heading today-snapshot-heading">
+          <div><div className="eyebrow">TODAY</div><h2>اليوم</h2></div>
+          <span className="date-chip">{date(new Date())}</span>
+        </section>
+        <section className="cards today-cards">
+          <MetricCard label="طلبات اليوم" value={number(todayOrders)} featured />
+          <MetricCard label="مبيعات اليوم" value={money(todayValue)} featured />
+          <MetricCard label="متوسط الطلب اليوم" value={money(todayAov)} />
+          <MetricCard label="عملاء اليوم" value={number(todayCustomers)} />
+          <MetricCard label="المسترجع اليوم" value={money(todayRefunded)} />
+          <MetricCard label="صافي اليوم" value={money(todayNet)} featured />
+        </section>
+
         <section className="analytics-grid store-breakdowns">
           <section className="panel">
             <div className="panel-title-row"><div><h2>الشحن</h2><p className="muted">توزيع جميع الطلبات حسب شركة / نوع الشحن.</p></div></div>
@@ -451,16 +464,6 @@ function Overview() {
 
       {!loading && !error && (
         <>
-          <section className="section-heading"><div><div className="eyebrow">TODAY</div><h2>اليوم</h2></div><span className="date-chip">{date(new Date())}</span></section>
-          <section className="cards today-cards">
-            <MetricCard label="طلبات اليوم" value={number(todayOrders)} featured />
-            <MetricCard label="مبيعات اليوم" value={money(todayValue)} featured />
-            <MetricCard label="متوسط الطلب اليوم" value={money(todayAov)} />
-            <MetricCard label="عملاء اليوم" value={number(todayCustomers)} />
-            <MetricCard label="المسترجع اليوم" value={money(todayRefunded)} />
-            <MetricCard label="صافي اليوم" value={money(todayNet)} featured />
-          </section>
-
           {compare && <>
             <section className="section-heading"><div><div className="eyebrow">PERIOD PERFORMANCE</div><h2>الفترة المختارة</h2></div></section>
             <section className="period-range"><div><span>الفترة الحالية</span><strong>{periodDates.current}</strong></div><div><span>الفترة السابقة</span><strong>{periodDates.previous}</strong></div></section>
