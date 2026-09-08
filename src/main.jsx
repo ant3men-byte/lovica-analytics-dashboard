@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
+import ExcelJS from 'exceljs'
 import './styles.css'
 
 const supabase = createClient(
@@ -648,17 +649,181 @@ function CustomerSearch() {
   </>
 }
 
+
+function Reports() {
+  const [exporting, setExporting] = useState(false)
+  const [message, setMessage] = useState('')
+
+  const exportCustomersReport = async () => {
+    setExporting(true)
+    setMessage('')
+
+    try {
+      const { data, error } = await supabase.rpc('report_all_customers_v1')
+
+      if (error) {
+        setMessage(`تعذر تجهيز التقرير: ${error.message}`)
+        setExporting(false)
+        return
+      }
+
+      const rows = data || []
+      const workbook = new ExcelJS.Workbook()
+      workbook.creator = 'Lovica Analytics'
+      workbook.created = new Date()
+
+      const sheet = workbook.addWorksheet('العملاء', {
+        views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }],
+      })
+
+      sheet.columns = [
+        { header: 'اسم العميل', key: 'customer_name', width: 28 },
+        { header: 'رقم الجوال', key: 'mobile', width: 18 },
+        { header: 'المدينة', key: 'city', width: 20 },
+        { header: 'عدد الطلبات', key: 'orders_count', width: 14 },
+        { header: 'إجمالي المشتريات', key: 'total_spent', width: 18 },
+        { header: 'أول طلب', key: 'first_order_at', width: 16 },
+        { header: 'آخر طلب', key: 'last_order_at', width: 16 },
+        { header: 'مدة الغياب بالأيام', key: 'days_inactive', width: 18 },
+        { header: 'حالة العميل', key: 'inactivity_status', width: 18 },
+      ]
+
+      rows.forEach((r) => {
+        sheet.addRow({
+          customer_name: r.customer_name || '—',
+          mobile: r.mobile || '—',
+          city: r.city || '—',
+          orders_count: Number(r.orders_count || 0),
+          total_spent: Number(r.total_spent || 0),
+          first_order_at: r.first_order_at ? new Date(r.first_order_at) : null,
+          last_order_at: r.last_order_at ? new Date(r.last_order_at) : null,
+          days_inactive: r.days_inactive == null ? null : Number(r.days_inactive),
+          inactivity_status: r.inactivity_status || '—',
+        })
+      })
+
+      const header = sheet.getRow(1)
+      header.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      header.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF111111' },
+      }
+      header.alignment = { horizontal: 'center', vertical: 'middle' }
+      header.height = 24
+
+      sheet.getColumn('orders_count').numFmt = '0'
+      sheet.getColumn('total_spent').numFmt = '#,##0.00 "ر.س"'
+      sheet.getColumn('first_order_at').numFmt = 'yyyy-mm-dd'
+      sheet.getColumn('last_order_at').numFmt = 'yyyy-mm-dd'
+      sheet.getColumn('days_inactive').numFmt = '0'
+
+      sheet.autoFilter = {
+        from: 'A1',
+        to: 'I1',
+      }
+
+      sheet.eachRow((row, rowNumber) => {
+        row.alignment = { vertical: 'middle', horizontal: rowNumber === 1 ? 'center' : 'right' }
+        if (rowNumber > 1) row.height = 20
+      })
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+
+      const now = new Date()
+      const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      const filename = `Lovica_Customers_Report_${stamp}.xlsx`
+
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+
+      setMessage(`تم استخراج التقرير بنجاح — ${number(rows.length)} عميل.`)
+    } catch (err) {
+      setMessage(`تعذر استخراج التقرير: ${err?.message || 'خطأ غير معروف'}`)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  return (
+    <>
+      <section className="panel hero-panel">
+        <div>
+          <div className="eyebrow">REPORTS</div>
+          <h2>التقارير</h2>
+          <p className="muted">تقارير جاهزة للاستخراج من بيانات لوفيكا.</p>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-title-row">
+          <div>
+            <div className="eyebrow">CUSTOMERS REPORT</div>
+            <h2>تقرير جميع العملاء</h2>
+            <p className="muted">
+              جميع العملاء بدون تكرار مع عدد الطلبات، إجمالي المشتريات، أول وآخر طلب،
+              ومدة الغياب منذ آخر طلب.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={exportCustomersReport}
+            disabled={exporting}
+          >
+            {exporting ? 'جاري تجهيز Excel...' : 'استخراج Excel'}
+          </button>
+        </div>
+
+        <section className="details comparison-details" style={{ marginTop: 18 }}>
+          <div><span>التقرير</span><strong>جميع العملاء</strong></div>
+          <div><span>الفترة</span><strong>من بداية المتجر حتى اليوم</strong></div>
+          <div><span>التنسيق</span><strong>Excel (.xlsx)</strong></div>
+          <div><span>الترتيب</span><strong>الأكثر غيابًا أولًا</strong></div>
+        </section>
+
+        {message && <div className="info" style={{ marginTop: 14 }}>{message}</div>}
+      </section>
+    </>
+  )
+}
+
 function Dashboard({ profile }) {
   const [page, setPage] = useState('overview')
   const canSearchCustomers = ['owner', 'admin', 'customer_service'].includes(profile.role)
+  const canUseReports = ['owner', 'admin', 'customer_service'].includes(profile.role)
+
+  const pageTitle =
+    page === 'overview'
+      ? 'الرئيسية'
+      : page === 'customers'
+        ? 'بحث العملاء'
+        : 'التقارير'
+
   return <div className="dashboard">
     <aside><div className="side-logo"><div className="logo small">L</div><div><strong>لوفيكا</strong><span>Analytics V5</span></div></div>
-      <nav className="side-nav"><button type="button" onClick={() => setPage('overview')} className={page === 'overview' ? 'nav-active' : ''}>◫ الرئيسية</button>
-        {canSearchCustomers && <button type="button" onClick={() => setPage('customers')} className={page === 'customers' ? 'nav-active' : ''}>⌕ بحث العملاء</button>}</nav>
+      <nav className="side-nav">
+        <button type="button" onClick={() => setPage('overview')} className={page === 'overview' ? 'nav-active' : ''}>◫ الرئيسية</button>
+        {canSearchCustomers && <button type="button" onClick={() => setPage('customers')} className={page === 'customers' ? 'nav-active' : ''}>⌕ بحث العملاء</button>}
+        {canUseReports && <button type="button" onClick={() => setPage('reports')} className={page === 'reports' ? 'nav-active' : ''}>▤ التقارير</button>}
+      </nav>
       <div className="user"><strong>{profile.full_name || 'مستخدم'}</strong><span>{profile.role}</span><button className="logout" onClick={() => supabase.auth.signOut()}>تسجيل الخروج</button></div>
     </aside>
-    <main className="main"><header><div><div className="eyebrow">LOVICA ANALYTICS</div><h1>{page === 'overview' ? 'الرئيسية' : 'بحث العملاء'}</h1></div><div className="safe">✓ جلسة محمية</div></header>
-      {page === 'overview' && <Overview />}{page === 'customers' && canSearchCustomers && <CustomerSearch />}
+
+    <main className="main">
+      <header><div><div className="eyebrow">LOVICA ANALYTICS</div><h1>{pageTitle}</h1></div><div className="safe">✓ جلسة محمية</div></header>
+      {page === 'overview' && <Overview />}
+      {page === 'customers' && canSearchCustomers && <CustomerSearch />}
+      {page === 'reports' && canUseReports && <Reports />}
     </main>
   </div>
 }
